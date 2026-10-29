@@ -1,0 +1,70 @@
+const express = require('express');
+const https = require('https');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send("Bot Facebook Quản Lý Nhóm Đang Chạy 24/7!");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server đang lắng nghe tại port ${PORT}`);
+});
+
+// === CẤU HÌNH BOT ===
+const PAGE_ACCESS_TOKEN = "EAAD_YOUR_TOKEN_HERE"; // Thay bằng Token thật
+const GROUP_ID = "YOUR_GROUP_ID_HERE";              // Thay bằng ID nhóm
+const BLACKLIST = ["spam", "lừa đảo", "quảng cáo", "link độc", "virus", "18+", "sex", "cờ bạc"];
+
+function callGraph(path, method = "GET", data = null) {
+  return new Promise((resolve, reject) => {
+    const postData = data ? JSON.stringify(data) : '';
+    const options = {
+      hostname: 'graph.facebook.com',
+      port: 443,
+      path: `/v18.0/${path}?access_token=${PAGE_ACCESS_TOKEN}`,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(data && { 'Content-Length': Buffer.byteLength(postData) })
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (e) { resolve(body); }
+      });
+    });
+
+    req.on('error', (e) => reject(e));
+    if (data) req.write(postData);
+    req.end();
+  });
+}
+
+async function runBot() {
+  if (PAGE_ACCESS_TOKEN.includes("EAAD_YOUR")) {
+    console.log("❌ Chưa cấu hình PAGE_ACCESS_TOKEN.");
+    return;
+  }
+  console.log("🤖 Đang kiểm tra bài viết mới...");
+  try {
+    const res = await callGraph(`${GROUP_ID}/feed?limit=10&fields=id,message,from`);
+    if (res && res.data) {
+      for (let post of res.data) {
+        if (post.message && BLACKLIST.some(w => post.message.toLowerCase().includes(w))) {
+          console.log(`⚠️ Phát hiện từ cấm: ${post.id}`);
+          await callGraph(`${post.id}`, "DELETE");
+          console.log(`🗑️ Đã xóa bài viết vi phạm.`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Lỗi:", err.message);
+  }
+}
+
+setInterval(runBot, 15000);
